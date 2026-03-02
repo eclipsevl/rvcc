@@ -1,0 +1,7 @@
+rvcc
+rvcc_disasm
+test/test_runner
+test/*.bin
+test/*.asm
+test/hello.h
+.DS_Store
