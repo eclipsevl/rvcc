@@ -14,6 +14,8 @@ typedef struct {
     uint32_t word;      /* raw instruction */
     uint32_t offset;    /* original byte offset in code[] */
     int      removed;   /* 1 = mark for removal */
+    int      is_patch;  /* 1 = part of a string/global patch, don't optimize */
+    int      is_branch_target; /* 1 = target of a branch/jump, multiple paths reach here */
 } opt_insn_t;
 
 static uint32_t read32(const uint8_t *p)
@@ -152,9 +154,8 @@ static int next_live(opt_insn_t *insns, int n, int start)
 static int mark_patterns(opt_insn_t *insns, int n)
 {
     int changed = 0;
-
     for (int i = 0; i < n; i++) {
-        if (insns[i].removed) continue;
+        if (insns[i].removed || insns[i].is_patch) continue;
 
         /* ── Push-Pop patterns ─────────────────────────────────────
          * Look for: addi sp,-4 / sw rX,0(sp) then scan forward
@@ -331,6 +332,9 @@ static int mark_patterns(opt_insn_t *insns, int n)
                 /* Found matching load? */
                 if (opcode(w) == 0x03 && funct3(w) == 2 &&
                     rs1(w) == sw_base && imm_i(w) == sw_off) {
+                    /* Don't eliminate if load is a branch target (loop entry) —
+                     * the source register may be clobbered on a back-edge path */
+                    if (insns[k].is_branch_target) { ok = 0; break; }
                     int lw_rd = rd(w);
                     if (lw_rd == sw_rs2) {
                         insns[k].removed = 1;
@@ -347,6 +351,8 @@ static int mark_patterns(opt_insn_t *insns, int n)
                 }
                 /* Branch or jump? */
                 if (is_branch_or_jump(w)) { ok = 0; break; }
+                /* Branch target between store and load means alternate path exists */
+                if (insns[k].is_branch_target) { ok = 0; break; }
                 /* Stack operations? Push-pop opt may rewrite intervening insns */
                 if (touches_sp(w)) { ok = 0; break; }
                 /* Source register clobbered? */
@@ -367,7 +373,8 @@ static int mark_patterns(opt_insn_t *insns, int n)
             int rD = rd(insns[i].word);
             int32_t imm = imm_i(insns[i].word);
             int j = next_live(insns, n, i + 1);
-            if (j >= 0 && opcode(insns[j].word) == 0x13 && funct3(insns[j].word) == 0 &&
+            if (j >= 0 && !insns[j].is_patch &&
+                opcode(insns[j].word) == 0x13 && funct3(insns[j].word) == 0 &&
                 rs1(insns[j].word) == rD && imm_i(insns[j].word) == 0 &&
                 rd(insns[j].word) != REG_ZERO) {
                 int rY = rd(insns[j].word);
@@ -391,7 +398,8 @@ static int mark_patterns(opt_insn_t *insns, int n)
             int rD = rd(insns[i].word);
             uint32_t lui_imm = insns[i].word & 0xFFFFF000U;
             int j = next_live(insns, n, i + 1);
-            if (j >= 0 && opcode(insns[j].word) == 0x13 && funct3(insns[j].word) == 0 &&
+            if (j >= 0 && !insns[j].is_patch &&
+                opcode(insns[j].word) == 0x13 && funct3(insns[j].word) == 0 &&
                 rs1(insns[j].word) == rD && imm_i(insns[j].word) == 0 &&
                 rd(insns[j].word) != REG_ZERO) {
                 int rY = rd(insns[j].word);
@@ -652,6 +660,42 @@ void optimize(compiler_t *c)
         insns[i].word = read32(c->code + off);
         insns[i].offset = off;
         insns[i].removed = 0;
+        insns[i].is_patch = 0;
+        insns[i].is_branch_target = 0;
+    }
+
+    /* Mark branch/jump targets — instructions reachable from multiple paths */
+    for (int i = 0; i < n_insns; i++) {
+        uint32_t w = insns[i].word;
+        int op = opcode(w);
+        uint32_t tgt_off = 0;
+        int has_tgt = 0;
+        if (op == 0x63) { /* B-type branch */
+            tgt_off = (uint32_t)((int32_t)insns[i].offset + imm_b(w));
+            has_tgt = 1;
+        } else if (op == 0x6F) { /* J-type jump */
+            tgt_off = (uint32_t)((int32_t)insns[i].offset + imm_j(w));
+            has_tgt = 1;
+        }
+        if (has_tgt && tgt_off >= STARTUP_SIZE) {
+            int idx = (tgt_off - STARTUP_SIZE) / 4;
+            if (idx >= 0 && idx < n_insns)
+                insns[idx].is_branch_target = 1;
+        }
+    }
+
+    /* 1a. Mark string/global patch instructions as protected */
+    for (int i = 0; i < c->num_string_patches; i++) {
+        uint32_t lo = (c->string_patches[i].lui_offset - STARTUP_SIZE) / 4;
+        uint32_t ao = (c->string_patches[i].addi_offset - STARTUP_SIZE) / 4;
+        if (lo < (uint32_t)n_insns) insns[lo].is_patch = 1;
+        if (ao < (uint32_t)n_insns) insns[ao].is_patch = 1;
+    }
+    for (int i = 0; i < c->num_global_patches; i++) {
+        uint32_t lo = (c->global_patches[i].lui_offset - STARTUP_SIZE) / 4;
+        uint32_t ao = (c->global_patches[i].addi_offset - STARTUP_SIZE) / 4;
+        if (lo < (uint32_t)n_insns) insns[lo].is_patch = 1;
+        if (ao < (uint32_t)n_insns) insns[ao].is_patch = 1;
     }
 
     /* 1b. Dead function elimination */

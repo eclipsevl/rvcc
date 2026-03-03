@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api:*)",
+      "Bash(curl:*)",
+      "Bash(wc:*)",
+      "Bash(python3:*)",
+      "Bash(for dir in badcode basic_syscalls common custom_syscall extram meter minirv32_internal opcodes stackoverflow syscall_args unity)",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(__NEW_LINE_720b45eb8c0d37ee__ echo \"\")",
+      "Bash(make:*)",
+      "Bash(/tmp/test_mini_struct2.c:*)",
+      "Bash(./rvcc:*)",
+      "Bash(/tmp/ts1.c:*)",
+      "Bash(/tmp/ts2.c:*)",
+      "Bash(/tmp/tp1.c:*)",
+      "Bash(./test/test_runner:*)",
+      "Bash(/tmp/ts7.c:*)",
+      "Bash(bash -c 'source test/run_tests.sh')",
+      "Bash(bash)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(xxd:*)"
+    ]
+  }
+}

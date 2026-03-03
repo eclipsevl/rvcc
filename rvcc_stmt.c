@@ -18,6 +18,48 @@ static void parse_local_decl(compiler_t *c, type_t base)
             return;
         }
 
+        /* Infer array size for unsized arrays with initializer */
+        if (t.kind == TY_ARRAY && t.array_len == 0 && c->tok == TOK_ASSIGN) {
+            /* Save lexer state */
+            const char *save_pos = c->pos;
+            int save_line = c->line;
+            const char *save_expand = c->expand_pos;
+
+            next_token(c); /* consume '=' */
+
+            if (c->tok == TOK_LBRACE) {
+                /* Count brace-initializer elements */
+                next_token(c); /* consume '{' */
+                int count = 0;
+                int depth = 1;
+                if (c->tok != TOK_RBRACE) count = 1;
+                while (c->tok != TOK_EOF && depth > 0) {
+                    if (c->tok == TOK_LBRACE) depth++;
+                    else if (c->tok == TOK_RBRACE) {
+                        depth--;
+                        if (depth == 0) break;
+                    } else if (c->tok == TOK_COMMA && depth == 1) {
+                        count++;
+                    }
+                    next_token(c);
+                }
+                int elem_sz = type_deref_size(&t);
+                t.array_len = count;
+                t.size = count * elem_sz;
+            } else if (c->tok == TOK_STR) {
+                /* String initializer: char buf[] = "str" */
+                int elem_sz = type_deref_size(&t);
+                t.array_len = c->tok_str_len + 1; /* +1 for NUL */
+                t.size = t.array_len * elem_sz;
+            }
+
+            /* Restore lexer state to '=' */
+            c->pos = save_pos;
+            c->line = save_line;
+            c->expand_pos = save_expand;
+            c->tok = TOK_ASSIGN;
+        }
+
         int lid = add_local(c, name, t);
         if (lid < 0) return;
 
@@ -577,7 +619,7 @@ params_done:
     if (is_leaf) {
         /* Leaf with locals: need s0 frame but not ra save/restore.
          * Frame = 4 (s0 only) + locals, rounded up to 16 */
-        c->frame_size = ((4 + locals_sz + 15) / 16) * 16;
+        c->frame_size = ((8 + locals_sz + 15) / 16) * 16;
         int frame = c->frame_size;
 
         patch32(c, c->prologue_offset + 0,
