@@ -183,6 +183,14 @@ typedef struct {
     int      count;
 } break_list_t;
 
+/* context for lvalue handling */
+typedef struct {
+    int kind;       /* 0=none, 1=local, 2=deref(a0), 3=global */
+    int local_id;
+    int global_id;
+    type_t type;
+} lvalue_t;
+
 /* ── Compiler state ─────────────────────────────────────────────── */
 typedef struct {
     /* emit buffer */
@@ -265,6 +273,9 @@ typedef struct {
 
     /* t-register save depth for binary ops (0..3 → t3..t6, ≥4 → stack) */
     int     save_depth;
+
+    /* last lvalue from expr_primary (for post-increment) */
+    lvalue_t last_lv;
 
     /* optimization */
     int     opt_level;
@@ -372,14 +383,6 @@ type_t expr_cast(compiler_t *c);
 type_t expr_unary(compiler_t *c);
 type_t expr_postfix(compiler_t *c);
 type_t expr_primary(compiler_t *c);
-
-/* context for lvalue handling */
-typedef struct {
-    int kind;       /* 0=none, 1=local, 2=deref(a0), 3=global */
-    int local_id;
-    int global_id;
-    type_t type;
-} lvalue_t;
 
 type_t expr_lvalue(compiler_t *c, lvalue_t *lv);
 void   emit_lvalue_store(compiler_t *c, lvalue_t *lv);

@@ -22,7 +22,14 @@
       "Bash(bash)",
       "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(xxd:*)"
+      "Bash(xxd:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(git clone:*)",
+      "Bash(git -C /tmp/uvm32 status)",
+      "Bash(git -C /tmp/uvm32 log --all --name-only --oneline)",
+      "Bash(git -C /tmp/uvm32 ls-tree:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(./rvcc_disasm:*)"
     ]
   }
 }

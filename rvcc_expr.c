@@ -139,6 +139,7 @@ type_t expr_lvalue(compiler_t *c, lvalue_t *lv)
 
 type_t expr_primary(compiler_t *c)
 {
+    c->last_lv.kind = 0; /* clear lvalue tracking */
     if (c->had_error) return type_int();
 
     /* Number literal */
@@ -400,11 +401,15 @@ type_t expr_primary(compiler_t *c)
             if (l->type.kind == TY_ARRAY) {
                 /* array decays to pointer */
                 emit_addi(c, REG_A0, REG_S0, l->offset);
+                c->last_lv.kind = 0; /* not a simple lvalue */
                 type_t base = *l->type.base;
                 return type_ptr(&base);
             }
             emit_load(c, REG_A0, REG_S0, l->offset,
                        type_sizeof(&l->type), l->type.is_unsigned);
+            c->last_lv.kind = 1;
+            c->last_lv.local_id = lid;
+            c->last_lv.type = l->type;
             return l->type;
         }
 
@@ -413,10 +418,14 @@ type_t expr_primary(compiler_t *c)
             emit_global_addr(c, gid);
             global_t *g = &c->globals[gid];
             if (g->type.kind == TY_ARRAY) {
+                c->last_lv.kind = 0;
                 return type_ptr(g->type.base);
             }
             emit_load(c, REG_A0, REG_A0, 0,
                        type_sizeof(&g->type), g->type.is_unsigned);
+            c->last_lv.kind = 3;
+            c->last_lv.global_id = gid;
+            c->last_lv.type = g->type;
             return g->type;
         }
 
@@ -509,18 +518,19 @@ type_t expr_postfix(compiler_t *c)
         if (c->tok == TOK_INC || c->tok == TOK_DEC) {
             int is_inc = (c->tok == TOK_INC);
             next_token(c);
-            /* a0 has current value. We need the lvalue to store back.
-             * This is tricky in our model. For simplicity, only support
-             * post-inc/dec on the most recent primary (variable). */
-            /* Just emit: push old value, add/sub 1, store back, pop old value */
-            /* We need to know what we're incrementing. Punt: just modify a0 and
-             * assume the caller pattern handles it. For now, treat as value +-1. */
+            /* a0 has current value. Use last_lv to store back. */
             emit_push(c, REG_A0); /* save old value */
             emit_addi(c, REG_A0, REG_A0, is_inc ? 1 : -1);
-            /* We can't easily store back without lvalue info here.
-             * This is a limitation — full support would need lvalue tracking through postfix.
-             * For now, return old value. */
-            emit_pop(c, REG_A0);
+            if (c->last_lv.kind == 1) {
+                local_t *l = &c->locals[c->last_lv.local_id];
+                emit_store(c, REG_A0, REG_S0, l->offset, type_sizeof(&l->type));
+            } else if (c->last_lv.kind == 3) {
+                emit_mv(c, REG_A1, REG_A0); /* save new value in a1 */
+                emit_global_addr(c, c->last_lv.global_id); /* a0 = address */
+                emit_store(c, REG_A1, REG_A0, 0, type_sizeof(&c->last_lv.type));
+            }
+            emit_pop(c, REG_A0); /* return old value */
+            c->last_lv.kind = 0;
             continue;
         }
 

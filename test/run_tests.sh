@@ -81,6 +81,19 @@ run_pair test/test_string.c "$(printf 'test\n65 68 5 9 10 65')"
 run_pair test/test_nested.c "$(printf '9 5 64 3 1111')"
 run_pair test/test_multi_func.c "$(printf '49 15 9 3 10 0 15')"
 
+# uvm32 tests (from https://github.com/ringtailsoftware/uvm32/tree/main/test)
+# These require uvm32_target.h and features not yet supported by rvcc.
+# Uncomment as support is added.
+run_pair test/test_uvm_badcode.c "TODO"
+run_pair test/test_uvm_basic_syscalls.c "TODO"
+run_pair test/test_uvm_custom_syscall.c "TODO"run_pair test/test_uvm_extram.c "TODO"
+run_pair test/test_uvm_meter.c "TODO"
+run_pair test/test_uvm_minirv32_internal.c "TODO"
+run_pair test/test_uvm_opcodes.c "TODO"
+run_pair test/test_uvm_stackoverflow.c "TODO"
+run_pair test/test_uvm_syscall_args.c "TODO"
+run_pair test/test_uvm_ssd1306.c "TODO"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 
